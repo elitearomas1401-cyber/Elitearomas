@@ -11,11 +11,18 @@ function renderProducts(filter = 'all') {
   if (!grid) return;
   grid.innerHTML = '';
 
-  // NUEVO: Leer de localStorage si existe, si no usar MENU de data.js
+  // Leer configuración
+  const storedConfig = localStorage.getItem('elite_config');
+  const currentConfig = storedConfig ? JSON.parse(storedConfig) : CONFIG;
+
+  // Leer productos
   const storedProducts = localStorage.getItem('elite_products');
   const currentProducts = storedProducts ? JSON.parse(storedProducts) : MENU;
 
   const items = filter === 'all' ? currentProducts : currentProducts.filter(p => p.cat === filter);
+
+  // Renderizar pestañas de filtro dinámicamente si es necesario
+  renderFilterTabs(currentConfig.categories, filter);
 
   items.forEach((product, i) => {
     const card = document.createElement('div');
@@ -192,11 +199,35 @@ function clearCart() {
   renderCart();
 }
 
+function renderFilterTabs(categories, activeCat) {
+  const tabContainer = document.querySelector('.filter-tabs');
+  if (!tabContainer) return;
+
+  let html = `<button class="filter-tab ${activeCat === 'all' ? 'active' : ''}" data-cat="all">✨ Todo</button>`;
+  categories.forEach(cat => {
+    html += `<button class="filter-tab ${activeCat === cat ? 'active' : ''}" data-cat="${cat}">${cat.charAt(0).toUpperCase() + cat.slice(1)}</button>`;
+  });
+  tabContainer.innerHTML = html;
+
+  // Re-vincular eventos
+  document.querySelectorAll('.filter-tab').forEach(tab => {
+    tab.onclick = () => {
+      document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      renderProducts(tab.dataset.cat);
+    };
+  });
+}
+
 /* ===========================
    WHATSAPP SEND
 =========================== */
 function sendWhatsApp() {
   if (cart.length === 0) return;
+
+  const storedConfig = localStorage.getItem('elite_config');
+  const currentConfig = storedConfig ? JSON.parse(storedConfig) : CONFIG;
+  const phone = currentConfig.phone;
 
   const totalPrice = cart.reduce((s, i) => s + i.price * i.qty, 0);
 
@@ -259,5 +290,11 @@ window.addEventListener('load', () => {
 
     renderProducts();
     renderCart();
+
+    // NUEVO: Actualizar el link de WhatsApp del footer dinámicamente
+    const storedConfig = localStorage.getItem('elite_config');
+    const currentConfig = storedConfig ? JSON.parse(storedConfig) : (typeof CONFIG !== 'undefined' ? CONFIG : {phone: '18295095974'});
+    const footerWa = document.querySelector('footer a[href*="wa.me"]');
+    if (footerWa) footerWa.href = `https://wa.me/${currentConfig.phone}`;
   }, 1600);
 });

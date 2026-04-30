@@ -1,14 +1,14 @@
 function adminPanel() {
     return {
         products: [],
+        config: { phone: '', categories: [] },
         search: '',
         filterCat: 'all',
         showModal: false,
         editMode: false,
-        form: { id: null, name: '', desc: '', price: '', cat: 'perfumes', image: '' },
+        form: { id: null, name: '', desc: '', price: '', cat: '', image: '' },
         toast: { show: false, title: '', msg: '' },
 
-        // Configuración de GitHub
         github: {
             token: '',
             repo: 'elitearomas1401-cyber/Elitearomas',
@@ -20,17 +20,27 @@ function adminPanel() {
             if (localStorage.getItem('admin_logged') !== 'true') {
                 window.location.href = 'login.html';
             }
-            this.loadProducts();
+            this.loadData();
             this.github.token = localStorage.getItem('gh_token') || '';
         },
 
-        loadProducts() {
-            const stored = localStorage.getItem('elite_products');
-            if (stored) {
-                this.products = JSON.parse(stored);
+        loadData() {
+            // Cargar Config
+            const storedConfig = localStorage.getItem('elite_config');
+            if (storedConfig) {
+                this.config = JSON.parse(storedConfig);
+            } else if (typeof CONFIG !== 'undefined') {
+                this.config = CONFIG;
+                localStorage.setItem('elite_config', JSON.stringify(this.config));
+            }
+
+            // Cargar Productos
+            const storedProds = localStorage.getItem('elite_products');
+            if (storedProds) {
+                this.products = JSON.parse(storedProds);
             } else if (typeof MENU !== 'undefined') {
                 this.products = MENU;
-                this.saveToDisk();
+                localStorage.setItem('elite_products', JSON.stringify(this.products));
             }
         },
 
@@ -46,12 +56,58 @@ function adminPanel() {
             return this.products.filter(p => p.cat === cat).length;
         },
 
+        saveConfig() {
+            localStorage.setItem('elite_config', JSON.stringify(this.config));
+            this.showToast('Configuración Guardada', 'El teléfono ha sido actualizado localmente');
+        },
+
+        handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // Validar tamaño (máximo 2MB para no sobrecargar el JSON)
+            if (file.size > 2 * 1024 * 1024) {
+                alert("La imagen es muy pesada. Máximo 2MB.");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                this.form.image = e.target.result; // Esto guarda la imagen en Base64
+            };
+            reader.readAsDataURL(file);
+        },
+
+        checkNewCat(e) {
+            if (e.target.value === 'NEW') {
+                const newCat = prompt("Ingresa el nombre de la nueva categoría:");
+                if (newCat && newCat.trim() !== '') {
+                    const cleanCat = newCat.trim().toLowerCase();
+                    if (!this.config.categories.includes(cleanCat)) {
+                        this.config.categories.push(cleanCat);
+                        localStorage.setItem('elite_config', JSON.stringify(this.config));
+                    }
+                    this.form.cat = cleanCat;
+                } else {
+                    this.form.cat = this.config.categories[0];
+                }
+            }
+        },
+
         openModal(mode, product = null) {
             this.editMode = mode === 'edit';
             if (this.editMode && product) {
                 this.form = { ...product };
             } else {
-                this.form = { id: Date.now(), name: '', desc: '', price: '', cat: 'perfumes', image: '', emoji: '✨' };
+                this.form = {
+                    id: Date.now(),
+                    name: '',
+                    desc: '',
+                    price: '',
+                    cat: this.config.categories[0] || '',
+                    image: '',
+                    emoji: '✨'
+                };
             }
             this.showModal = true;
         },
@@ -60,49 +116,49 @@ function adminPanel() {
             if (this.editMode) {
                 const index = this.products.findIndex(p => p.id === this.form.id);
                 if (index !== -1) this.products[index] = { ...this.form };
-                this.showToast('Actualizado', 'Producto actualizado localmente');
             } else {
                 this.products.push({ ...this.form });
-                this.showToast('Guardado', 'Agregado al almacenamiento local');
             }
-            this.saveToDisk();
+            localStorage.setItem('elite_products', JSON.stringify(this.products));
+            this.showToast('Guardado', 'Los cambios se guardaron localmente');
             this.showModal = false;
         },
 
         deleteProduct(id) {
-            if (confirm('¿Estás seguro de eliminar este producto?')) {
+            if (confirm('¿Eliminar este producto?')) {
                 this.products = this.products.filter(p => p.id !== id);
-                this.saveToDisk();
+                localStorage.setItem('elite_products', JSON.stringify(this.products));
                 this.showToast('Eliminado', 'Producto borrado');
             }
         },
 
-        saveToDisk() {
-            localStorage.setItem('elite_products', JSON.stringify(this.products));
-        },
-
         async publishToGitHub() {
             if (!this.github.token) {
-                const token = prompt("Ingresa tu GitHub Personal Access Token para publicar:");
+                const token = prompt("Ingresa tu GitHub Token:");
                 if (!token) return;
                 this.github.token = token;
                 localStorage.setItem('gh_token', token);
             }
 
-            this.showToast('Publicando...', 'Sincronizando con GitHub y Netlify');
+            this.showToast('Publicando...', 'Sincronizando catálogo y configuración...');
 
             try {
-                // 1. Obtener el SHA del archivo actual
                 const res = await fetch(`https://api.github.com/repos/${this.github.repo}/contents/${this.github.path}`, {
                     headers: { 'Authorization': `token ${this.github.token}` }
                 });
                 const fileData = await res.json();
 
-                // 2. Preparar el nuevo contenido (reescribimos el archivo data.js)
-                const newContent = `const MENU = ${JSON.stringify(this.products, null, 2)};`;
+                // Generar contenido del archivo js/data.js incluyendo CONFIG y MENU
+                const newContent = `
+const CONFIG = ${JSON.stringify(this.config, null, 2)};
+
+const MENU = ${JSON.stringify(this.products, null, 2)};
+
+const GRADIENTS = {}; // Mantener si es necesario
+                `.trim();
+
                 const encodedContent = btoa(unescape(encodeURIComponent(newContent)));
 
-                // 3. Hacer el Commit
                 const updateRes = await fetch(`https://api.github.com/repos/${this.github.repo}/contents/${this.github.path}`, {
                     method: 'PUT',
                     headers: {
@@ -110,7 +166,7 @@ function adminPanel() {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        message: "Actualización de catálogo desde Panel Admin",
+                        message: "Update Catalog & Config from Admin",
                         content: encodedContent,
                         sha: fileData.sha,
                         branch: this.github.branch
@@ -118,19 +174,19 @@ function adminPanel() {
                 });
 
                 if (updateRes.ok) {
-                    this.showToast('¡Éxito!', 'Los cambios estarán vivos en Netlify en 1 minuto');
+                    this.showToast('¡Éxito!', 'Catálogo y teléfono actualizados en la web');
                 } else {
                     throw new Error('Error al actualizar');
                 }
             } catch (err) {
                 console.error(err);
-                this.showToast('Error', 'No se pudo publicar. Revisa tu Token y Repo.');
+                this.showToast('Error', 'No se pudo publicar. Revisa tu Token.');
             }
         },
 
         showToast(title, msg) {
             this.toast = { show: true, title, msg };
-            setTimeout(() => this.toast.show = false, 4000);
+            setTimeout(() => this.toast.show = false, 3000);
         },
 
         logout() {

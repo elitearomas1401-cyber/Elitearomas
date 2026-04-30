@@ -1,4 +1,12 @@
 /* ===========================
+   CONFIG — GLOBAL SETTINGS
+=========================== */
+const CONFIG = {
+  phone: "18295095974",
+  categories: ["perfumes", "pantalones"]
+};
+
+/* ===========================
    DATA — MENU (Simulated DB)
 =========================== */
 const GRADIENTS = {
